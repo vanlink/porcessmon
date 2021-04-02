@@ -32,10 +32,10 @@ static void trave_dir(PROC_FUNC func)
     DIR *d = NULL;
     struct dirent *dp = NULL;
     struct stat st;
-    char p[2048] = {0};
-    char buff[4097] = {0};
+    char pidpath[2048] = {0};
+    char buff[CMDLINE_MAX_LEN + 1] = {0};
     int fd, ret;
-    char pid[2048] = {0};
+    char pid[64] = {0};
 
     if(!(d = opendir(PROC_PATH))) {
         printf("opendir %s error.\n", PROC_PATH);
@@ -46,9 +46,9 @@ static void trave_dir(PROC_FUNC func)
         if((!strncmp(dp->d_name, ".", 1)) || (!strncmp(dp->d_name, "..", 2))){
             continue;
         }
-        snprintf(p, sizeof(p) - 1, "%s/%s", PROC_PATH, dp->d_name);
-        if(stat(p, &st) < 0){
-            printf("stat [%s] err.\n", p);
+        snprintf(pidpath, sizeof(pidpath) - 1, "%s/%s", PROC_PATH, dp->d_name);
+        if(stat(pidpath, &st) < 0){
+            printf("stat [%s] err.\n", pidpath);
             continue;
         }
         if(!S_ISDIR(st.st_mode)) {
@@ -62,7 +62,7 @@ static void trave_dir(PROC_FUNC func)
         }
         strcpy(pid, dp->d_name);
 
-        snprintf(buff, sizeof(buff) - 1, "%s/cmdline", p);
+        snprintf(buff, sizeof(buff) - 1, "%s/cmdline", pidpath);
 
         fd = open(buff, O_RDONLY);
         if(fd < 0){

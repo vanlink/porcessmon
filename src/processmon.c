@@ -151,6 +151,7 @@ static void trave_dir(PROC_FUNC func)
     char buff[CMDLINE_MAX_LEN + 1] = {0};
     int fd, ret;
     char pid[64] = {0};
+    int i;
 
     if(!(d = opendir(PROC_PATH))) {
         printf("opendir %s error.\n", PROC_PATH);
@@ -192,6 +193,14 @@ static void trave_dir(PROC_FUNC func)
             continue;
         }
 
+        // convert "\0" to space
+        for(i=0;i<ret;i++){
+            if(!buff[i]){
+                buff[i] = ' ';
+            }
+        }
+        buff[ret] = 0;
+
         func(pid, buff, ret);
     }
 
@@ -210,6 +219,7 @@ static int processes_learning(const char *pid, char *cmdline, int reallen)
     }
 
     printf("Learned new process pid=[%s] cmd=[%s] cmdlen=[%d]\n", pid, cmdline, reallen);
+    hexdump(cmdline, reallen);
 
     i = find_empty_slot(g_process_while_list, MAX_PROCESSES_ALLOWED);
 

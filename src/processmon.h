@@ -22,6 +22,8 @@ typedef struct CMDLINE_INFO_tag {
     int cmdline_len;
     char cmdline_str[CMDLINE_MAX_LEN + 1];
 
+    int killed_cnt;
+
     int report_cnt;
     int report_last_second;
 } CMDLINE_INFO;

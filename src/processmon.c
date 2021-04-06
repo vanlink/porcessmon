@@ -31,7 +31,53 @@ static CMDLINE_INFO *g_process_while_list[MAX_PROCESSES_ALLOWED];
 
 static CMDLINE_INFO *g_process_lock_list[MAX_PROCESSES_LOCKED];
 
-static int process_report_interval[MAX_PROCESS_REPORT_CNT] = {600, 1800};
+static int process_report_interval[MAX_PROCESS_REPORT_CNT] = {30, 60};
+
+static void hexdump(void *mem, unsigned int len)
+{
+        int HEXDUMP_COLS = 16;
+        unsigned int i, j;
+        
+        for(i = 0; i < len + ((len % HEXDUMP_COLS) ? (HEXDUMP_COLS - len % HEXDUMP_COLS) : 0); i++)
+        {
+                /* print offset */
+                if(i % HEXDUMP_COLS == 0)
+                {
+                        printf("0x%06x: ", i);
+                }
+ 
+                /* print hex data */
+                if(i < len)
+                {
+                        printf("%02x ", 0xFF & ((char*)mem)[i]);
+                }
+                else /* end of block, just aligning for ASCII dump */
+                {
+                        printf("   ");
+                }
+                
+                /* print ASCII dump */
+                if((int)(i % HEXDUMP_COLS) == (HEXDUMP_COLS - 1))
+                {
+                        for(j = i - (HEXDUMP_COLS - 1); j <= i; j++)
+                        {
+                                if(j >= len) /* end of block, not really printing */
+                                {
+                                        putchar(' ');
+                                }
+                                else if(isprint(((char*)mem)[j])) /* printable char */
+                                {
+                                        putchar(0xFF & ((char*)mem)[j]);        
+                                }
+                                else /* other char */
+                                {
+                                        putchar('.');
+                                }
+                        }
+                        putchar('\n');
+                }
+        }
+}
 
 static int time_seconds(void)
 {
@@ -193,6 +239,7 @@ static int report_process(CMDLINE_INFO *process)
     int time_now;
 
     if(process->report_cnt >= MAX_PROCESS_REPORT_CNT){
+        printf("Report process lock: max cnt reacked.\n");
         return 0;
     }
 
@@ -204,6 +251,8 @@ static int report_process(CMDLINE_INFO *process)
 
         process->report_last_second = time_now;
         process->report_cnt++;
+    }else{
+        printf("Report process lock: too fast.\n");
     }
 
     return 0;
@@ -220,6 +269,7 @@ static int processes_locking(const char *pid, char *cmdline, int reallen)
     }
 
     printf("Unknown process pid=[%s] cmd=[%s] cmdlen=[%d]\n", pid, cmdline, reallen);
+    hexdump(cmdline, reallen);
 
     pidint = atoi(pid);
 
@@ -254,6 +304,8 @@ static int processes_locking(const char *pid, char *cmdline, int reallen)
     }else{
         process = g_process_lock_list[i];
     }
+
+    process->killed_cnt++;
 
     report_process(process);
 

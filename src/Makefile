@@ -1,4 +1,4 @@
-LIBS=
+LIBS=-lpthread
 INCLUDE=
 DEPS=-Wall -Wextra -march=native
 SLIBS=

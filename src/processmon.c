@@ -9,6 +9,8 @@
 #include <ctype.h>
 #include <getopt.h>
 #include <signal.h>
+#include <time.h>
+#include <pthread.h>
 
 #include "processmon.h"
 
@@ -26,6 +28,15 @@ static int learntime = 60;
 static int sleepinterval = 5;
 
 static CMDLINE_INFO *g_process_while_list[MAX_PROCESSES_ALLOWED];
+
+static CMDLINE_INFO *g_process_lock_list[MAX_PROCESSES_LOCKED];
+
+static int process_report_interval[MAX_PROCESS_REPORT_CNT] = {600, 1800};
+
+static int time_seconds(void)
+{
+    return time((time_t*)NULL);
+}
 
 static CMDLINE_INFO *process_new(void)
 {
@@ -177,10 +188,32 @@ static int processes_learning(const char *pid, char *cmdline, int reallen)
     return 0;
 }
 
+static int report_process(CMDLINE_INFO *process)
+{
+    int time_now;
+
+    if(process->report_cnt >= MAX_PROCESS_REPORT_CNT){
+        return 0;
+    }
+
+    time_now = time_seconds();
+
+    if(!process->report_cnt || ((time_now - process->report_last_second) >= process_report_interval[process->report_cnt - 1])){
+
+        printf("Report process lock: pid=[%s] cmd=[%s] cmdlen=[%d]\n", process->pid, process->cmdline_str, process->cmdline_len);
+
+        process->report_last_second = time_now;
+        process->report_cnt++;
+    }
+
+    return 0;
+}
+
 static int processes_locking(const char *pid, char *cmdline, int reallen)
 {
     int i = find_cmdline(g_process_while_list, MAX_PROCESSES_ALLOWED, cmdline, reallen);
     int pidint;
+    CMDLINE_INFO *process;
 
     if(i >= 0){
         return 0;
@@ -196,6 +229,33 @@ static int processes_locking(const char *pid, char *cmdline, int reallen)
     }else{
         printf("Process pid=[%d] killed\n", pidint);
     }
+
+    i = find_cmdline(g_process_lock_list, MAX_PROCESSES_LOCKED, cmdline, reallen);
+    if(i < 0){
+
+        i = find_empty_slot(g_process_lock_list, MAX_PROCESSES_LOCKED);
+        if(i < 0){
+            printf("No empty slot.\n");
+            return -1;
+        }
+
+        process = process_new();
+        if(!process){
+            printf("No memory.\n");
+            return -1;
+        }
+        process->type = PROCESS_TYPE_LOCKED;
+        strcpy(process->pid, pid);
+        process->cmdline_len = reallen;
+        memcpy(process->cmdline_str, cmdline, reallen);
+
+        g_process_lock_list[i] = process;
+
+    }else{
+        process = g_process_lock_list[i];
+    }
+
+    report_process(process);
 
     return 0;
 }
@@ -231,8 +291,9 @@ int main(int argc, char **argv)
     cmd_parse_args(argc, argv);
 
     memset(g_process_while_list, 0, sizeof(g_process_while_list));
+    memset(g_process_lock_list, 0, sizeof(g_process_lock_list));
 
-    printf("===== process lock starts ... learn=[%d], interval=[%d] =====\n", learntime, sleepinterval);
+    printf("===== process lock starts ... learn=[%d], interval=[%d] [%d] =====\n", learntime, sleepinterval, time_seconds());
 
     printf("===== process learning starts =====\n");
 

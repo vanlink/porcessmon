@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -6,8 +7,65 @@
 #include <dirent.h>
 #include <string.h>
 #include <ctype.h>
+#include <getopt.h>
+#include <signal.h>
 
 #include "processmon.h"
+
+static const char short_options[] = "l:i:";
+static const struct option long_options[] = {
+    {"learntime", required_argument, NULL, 'l'},
+    {"sleepinterval", required_argument, NULL, 'i'},
+
+    {"help", no_argument, NULL, 'h'},
+
+    { 0, 0, 0, 0},
+};
+
+static int learntime = 60;
+static int sleepinterval = 5;
+
+static CMDLINE_INFO *g_process_while_list[MAX_PROCESSES_ALLOWED];
+
+static CMDLINE_INFO *process_new(void)
+{
+    return calloc(1, sizeof(CMDLINE_INFO));
+}
+
+static int find_empty_slot(CMDLINE_INFO **list, int list_size)
+{
+    int i;
+
+    for(i=0;i<list_size;i++){
+        if(!list[i]){
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int find_cmdline(CMDLINE_INFO **list, int list_size, const char *cmdlinestr, int cmdlinestr_len)
+{
+    int i;
+    CMDLINE_INFO *info;
+
+    for(i=0;i<list_size;i++){
+        info = list[i];
+        if(!info){
+            continue;
+        }
+        if(info->cmdline_len != cmdlinestr_len){
+            continue;
+        }
+        if(!memcmp(info->cmdline_str, cmdlinestr, cmdlinestr_len)){
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 
 static int is_int(const char *str)
 {
@@ -85,18 +143,125 @@ static void trave_dir(PROC_FUNC func)
     return;
 }
 
-static int show(const char *pid, char *cmdline, int reallen)
+static int processes_learning(const char *pid, char *cmdline, int reallen)
 {
-    printf("%-10s %-10d %s\n", pid, reallen, cmdline);
+    int i = find_cmdline(g_process_while_list, MAX_PROCESSES_ALLOWED, cmdline, reallen);
+    CMDLINE_INFO *process;
+
+    if(i >= 0){
+        return 0;
+    }
+
+    printf("Learned new process pid=[%s] cmd=[%s] cmdlen=[%d]\n", pid, cmdline, reallen);
+
+    i = find_empty_slot(g_process_while_list, MAX_PROCESSES_ALLOWED);
+
+    if(i < 0){
+        printf("No empty slot.\n");
+        return -1;
+    }
+
+    process = process_new();
+    if(!process){
+        printf("No memory.\n");
+        return -1;
+    }
+
+    process->type = PROCESS_TYPE_LEARNED;
+    strcpy(process->pid, pid);
+    process->cmdline_len = reallen;
+    memcpy(process->cmdline_str, cmdline, reallen);
+
+    g_process_while_list[i] = process;
+
+    return 0;
+}
+
+static int processes_locking(const char *pid, char *cmdline, int reallen)
+{
+    int i = find_cmdline(g_process_while_list, MAX_PROCESSES_ALLOWED, cmdline, reallen);
+    int pidint;
+
+    if(i >= 0){
+        return 0;
+    }
+
+    printf("Unknown process pid=[%s] cmd=[%s] cmdlen=[%d]\n", pid, cmdline, reallen);
+
+    pidint = atoi(pid);
+
+    i = kill(pidint, SIGKILL);
+    if(i < 0){
+        printf("Process pid=[%d] kill err=[%d]\n", pidint, i);
+    }else{
+        printf("Process pid=[%d] killed\n", pidint);
+    }
+
+    return 0;
+}
+
+
+static int cmd_parse_args(int argc, char **argv)
+{
+    int opt;
+    char **argvopt;
+    int option_index;
+
+    argvopt = argv;
+    while((opt = getopt_long(argc, argvopt, short_options, long_options, &option_index)) != EOF) {
+        switch(opt){
+            case 'l':
+                learntime = atoi(optarg);
+                break;
+            case 'i':
+                sleepinterval = atoi(optarg);
+                break;
+            default:
+                break;
+        }
+    }
+
     return 0;
 }
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
+    int i;
 
-    trave_dir(&show);
+    cmd_parse_args(argc, argv);
+
+    memset(g_process_while_list, 0, sizeof(g_process_while_list));
+
+    printf("===== process lock starts ... learn=[%d], interval=[%d] =====\n", learntime, sleepinterval);
+
+    printf("===== process learning starts =====\n");
+
+    i = 0;
+    while(1){
+        trave_dir(&processes_learning);
+        sleep(sleepinterval);
+        i += sleepinterval;
+        if(i > learntime){
+            printf("\n");
+            break;
+        }
+        printf(".");
+        fflush(stdout);
+    }
+
+    printf("===== process learning over =====\n");
+
+    printf("===== process locking starts =====\n");
+
+    i = 0;
+    while(1){
+        trave_dir(&processes_locking);
+        sleep(sleepinterval);
+        printf(".");
+        fflush(stdout);
+    }
+
+    printf("===== process locking over =====\n");
 
     return 0;
 }

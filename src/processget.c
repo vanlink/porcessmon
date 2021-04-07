@@ -20,8 +20,9 @@ static int msg_rsp_q;
 
 int main(int argc, char **argv)
 {
-    int ret;
+    int ret, i, cnt;
     MSG msg;
+    CMDLINE_INFO *info;
 
     msg_req_q = msgget((key_t)MSG_REQ_Q_KEY, IPC_EXCL);
     if(msg_req_q < 0){
@@ -41,6 +42,36 @@ int main(int argc, char **argv)
         printf("send msg q error | errno=%d [%s]\n", errno, strerror(errno));
         return -1;
     }
+
+    ret = msgrcv(msg_rsp_q, &msg, sizeof(msg), 0, 0);
+    if(ret < 0){
+        printf("failed to rcv msg number.\n");
+        return -1;
+    }
+
+    if(msg.type != MSG_RSP_PROCESSES_CNT){
+        printf("failed to rcv msg number type.\n");
+        return -1;
+    }
+
+    cnt = msg.processes_cnt;
+    printf("===== while list items [%d] =====\n", cnt);
+
+    for(i=0;i<cnt;i++){
+        ret = msgrcv(msg_rsp_q, &msg, sizeof(msg), 0, 0);
+        if(ret < 0){
+            printf("failed to rcv msg info.\n");
+            return -1;
+        }
+        if(msg.type != MSG_RSP_PROCESS_INFO){
+            printf("failed to rcv msg info type.\n");
+            return -1;
+        }
+        info = &msg.process_info;
+        printf("pid=[%s] cmd=[%s] cmdlen=[%d]\n", info->pid, info->cmdline_str, info->cmdline_len);
+    }
+
+    printf("===== while list items end =====\n");
 
     return 0;
 }

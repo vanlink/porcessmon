@@ -205,6 +205,14 @@ static void trave_dir(PROC_FUNC func)
         }
         buff[ret] = 0;
 
+        if(strstr(buff, "processget")){
+            continue;
+        }
+
+        if(strstr(buff, "processmon")){
+            continue;
+        }
+
         func(pid, buff, ret);
     }
 
@@ -350,11 +358,53 @@ static int cmd_parse_args(int argc, char **argv)
     return 0;
 }
 
+static int process_msg_req_get_process(void)
+{
+    MSG msg;
+    int i, cnt = 0;
+    int ret;
+    CMDLINE_INFO *info;
+
+    for(i=0;i<MAX_PROCESSES_ALLOWED;i++){
+        if(g_process_while_list[i]){
+            cnt++;
+        }
+    }
+
+    msg.type = MSG_RSP_PROCESSES_CNT;
+    msg.processes_cnt = cnt;
+    ret = msgsnd(msg_rsp_q, &msg, sizeof(msg), IPC_NOWAIT);
+    if(ret < 0){
+        printf("send msg q error | errno=%d [%s]\n", errno, strerror(errno));
+        return -1;
+    }
+
+    usleep(10000);
+
+    for(i=0;i<MAX_PROCESSES_ALLOWED;i++){
+        info = g_process_while_list[i];
+        if(!info){
+            continue;
+        }
+        msg.type = MSG_RSP_PROCESS_INFO;
+        memcpy(&msg.process_info, info, sizeof(msg.process_info));
+        ret = msgsnd(msg_rsp_q, &msg, sizeof(msg), IPC_NOWAIT);
+        if(ret < 0){
+            printf("send msg q error | errno=%d [%s]\n", errno, strerror(errno));
+            return -1;
+        }
+        usleep(10000);
+    }
+
+    return 0;
+}
+
 static int process_msg(MSG *msg)
 {
     switch (msg->type) {
         case MSG_REQ_GET_PROCESSES:
             printf("MSG rcv: MSG_REQ_GET_PROCESSES\n");
+            process_msg_req_get_process();
             break;
         default:
             printf("MSG rcv: unknown %ld\n", msg->type);

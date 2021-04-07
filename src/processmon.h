@@ -3,6 +3,9 @@
 
 #define PROC_PATH "/proc"
 
+#define MSG_REQ_Q_KEY 1232
+#define MSG_RSP_Q_KEY 1233
+
 #define CMDLINE_MAX_LEN 4096
 
 #define MAX_PROCESSES_ALLOWED 8192
@@ -27,6 +30,20 @@ typedef struct CMDLINE_INFO_tag {
     int report_cnt;
     int report_last_second;
 } CMDLINE_INFO;
+
+#define MSG_REQ_GET_PROCESSES 1
+#define MSG_RSP_PROCESSES_CNT 2
+#define MSG_RSP_PROCESS_INFO  3
+
+typedef struct MSG_tag {
+    long type;
+
+    union {
+        int processes_cnt;
+
+        CMDLINE_INFO process_info;
+    };
+} MSG;
 
 #endif
 

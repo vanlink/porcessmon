@@ -10,7 +10,8 @@
 #include <getopt.h>
 #include <signal.h>
 #include <time.h>
-#include <pthread.h>
+#include <sys/msg.h>
+#include <errno.h>
 
 #include "processmon.h"
 
@@ -32,6 +33,9 @@ static CMDLINE_INFO *g_process_while_list[MAX_PROCESSES_ALLOWED];
 static CMDLINE_INFO *g_process_lock_list[MAX_PROCESSES_LOCKED];
 
 static int process_report_interval[MAX_PROCESS_REPORT_CNT] = {30, 60};
+
+static int msg_req_q;
+static int msg_rsp_q;
 
 static void hexdump(void *mem, unsigned int len)
 {
@@ -219,7 +223,7 @@ static int processes_learning(const char *pid, char *cmdline, int reallen)
     }
 
     printf("Learned new process pid=[%s] cmd=[%s] cmdlen=[%d]\n", pid, cmdline, reallen);
-    hexdump(cmdline, reallen);
+    // hexdump(cmdline, reallen);
 
     i = find_empty_slot(g_process_while_list, MAX_PROCESSES_ALLOWED);
 
@@ -279,7 +283,7 @@ static int processes_locking(const char *pid, char *cmdline, int reallen)
     }
 
     printf("Unknown process pid=[%s] cmd=[%s] cmdlen=[%d]\n", pid, cmdline, reallen);
-    hexdump(cmdline, reallen);
+    // hexdump(cmdline, reallen);
 
     pidint = atoi(pid);
 
@@ -346,14 +350,47 @@ static int cmd_parse_args(int argc, char **argv)
     return 0;
 }
 
+static int process_msg(MSG *msg)
+{
+    switch (msg->type) {
+        case MSG_REQ_GET_PROCESSES:
+            printf("MSG rcv: MSG_REQ_GET_PROCESSES\n");
+            break;
+        default:
+            printf("MSG rcv: unknown %ld\n", msg->type);
+            break;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    int i;
+    int i, ret;
+    MSG msg;
 
     cmd_parse_args(argc, argv);
 
     memset(g_process_while_list, 0, sizeof(g_process_while_list));
     memset(g_process_lock_list, 0, sizeof(g_process_lock_list));
+
+    msg_req_q = msgget(MSG_REQ_Q_KEY, IPC_EXCL);
+    if(msg_req_q < 0){
+        msg_req_q = msgget(MSG_REQ_Q_KEY, IPC_CREAT | 0666);
+        if(msg_req_q < 0){
+            printf("failed to create msq | errno=%d [%s]\n", errno, strerror(errno));
+            exit(-1);
+        }
+    }
+
+    msg_rsp_q = msgget(MSG_RSP_Q_KEY, IPC_EXCL);
+    if(msg_rsp_q < 0){
+        msg_rsp_q = msgget(MSG_RSP_Q_KEY, IPC_CREAT | 0666);
+        if(msg_rsp_q < 0){
+            printf("failed to create msq | errno=%d [%s]\n", errno, strerror(errno));
+            exit(-1);
+        }
+    }
 
     printf("===== process lock starts ... learn=[%d], interval=[%d] [%d] =====\n", learntime, sleepinterval, time_seconds());
 
@@ -376,12 +413,23 @@ int main(int argc, char **argv)
 
     printf("===== process locking starts =====\n");
 
-    i = 0;
     while(1){
-        trave_dir(&processes_locking);
-        sleep(sleepinterval);
-        printf(".");
-        fflush(stdout);
+
+        memset(&msg, 0, sizeof(msg));
+        ret = msgrcv(msg_req_q, &msg, sizeof(msg), 0, IPC_NOWAIT);
+        if(ret >= 0){
+            process_msg(&msg);
+        }
+
+        if(i >= sleepinterval){
+            trave_dir(&processes_locking);
+            printf(".");
+            fflush(stdout);
+            i = 0;
+        }
+
+        i++;
+        sleep(1);
     }
 
     printf("===== process locking over =====\n");

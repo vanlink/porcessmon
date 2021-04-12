@@ -26,7 +26,7 @@ static const struct option long_options[] = {
 };
 
 static int learntime = 60;
-static int sleepinterval = 5;
+static int sleepinterval = 2;
 
 static CMDLINE_INFO *g_process_while_list[MAX_PROCESSES_ALLOWED];
 
